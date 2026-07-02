@@ -1,0 +1,116 @@
+from flask import Flask, render_template, request, redirect, session, url_for
+from flask_sqlalchemy import SQLAlchemy
+from flask_bcrypt import Bcrypt
+
+app = Flask(__name__)
+
+app.secret_key = "change_this_secret"
+
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
+
+db = SQLAlchemy(app)
+
+bcrypt = Bcrypt(app)
+
+# -----------------------------
+# Database
+# -----------------------------
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+
+    username = db.Column(db.String(50), unique=True)
+
+    email = db.Column(db.String(100), unique=True)
+
+    password = db.Column(db.String(200))
+
+
+with app.app_context():
+    db.create_all()
+
+# -----------------------------
+# Register
+# -----------------------------
+@app.route("/register", methods=["GET","POST"])
+def register():
+
+    if request.method == "POST":
+
+        username = request.form["username"].strip()
+
+        email = request.form["email"].strip()
+
+        password = request.form["password"]
+
+        if len(password) < 8:
+            return "Password should contain at least 8 characters."
+
+        if User.query.filter_by(username=username).first():
+            return "Username already exists."
+
+        hashed = bcrypt.generate_password_hash(password).decode("utf-8")
+
+        user = User(
+            username=username,
+            email=email,
+            password=hashed
+        )
+
+        db.session.add(user)
+
+        db.session.commit()
+
+        return redirect("/login")
+
+    return render_template("register.html")
+
+# -----------------------------
+# Login
+# -----------------------------
+@app.route("/login", methods=["GET","POST"])
+def login():
+
+    if request.method == "POST":
+
+        username = request.form["username"]
+
+        password = request.form["password"]
+
+        user = User.query.filter_by(username=username).first()
+
+        if user and bcrypt.check_password_hash(user.password,password):
+
+            session["user"] = username
+
+            return redirect("/dashboard")
+
+        return "Invalid Credentials"
+
+    return render_template("login.html")
+
+# -----------------------------
+# Dashboard
+# -----------------------------
+@app.route("/dashboard")
+def dashboard():
+
+    if "user" not in session:
+        return redirect("/login")
+
+    return render_template(
+        "dashboard.html",
+        user=session["user"]
+    )
+
+# -----------------------------
+# Logout
+# -----------------------------
+@app.route("/logout")
+def logout():
+
+    session.pop("user",None)
+
+    return redirect("/login")
+
+if __name__ == "__main__":
+    app.run(debug=True)
